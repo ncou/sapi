@@ -6,6 +6,7 @@ namespace Chiron\Sapi;
 
 use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
+use Chiron\Sapi\Exception\EmitterException;
 
 //https://github.com/narrowspark/http-emitter/blob/9e61a16408c81e656050c0dfde641f641527a29c/src/SapiEmitter.php
 
@@ -62,41 +63,55 @@ final class SapiEmitter
      * Construct the Emitter, and define the chunk size used to emit the body.
      *
      * @param int $bufferSize Should be greater than zero.
+     *
+     * @throws EmitterException if the buffer size is invalid.
      */
     public function __construct(int $bufferSize = self::DEFAULT_BUFFER_SIZE)
     {
         if ($bufferSize <= 0) {
-            throw new InvalidArgumentException('Buffer size must be greater than zero');
+            throw new EmitterException('Buffer size must be greater than zero'); // TODO : crer une méthode statique dans la classe EmitterException pour créer l'enception avec le message comme c'est fait avec EmitterException::forHeadersSent ????
         }
 
-        $this->bufferSize = $bufferSize;
+        $this->bufferSize = $bufferSize; // TODO : créer une méthode setBufferSize()
     }
 
     /**
      * Emit the http response to the client.
      *
      * @param ResponseInterface $response
+     *
+     * @throws EmitterException if headers have already been sent.
+     * @throws EmitterException if output is present in the output buffer.
      */
-    // TODO : lever une exception si les headers sont déjà envoyés !!!!   https://github.com/yiisoft/yii-web/blob/master/src/SapiEmitter.php#L45
-    //https://github.com/symfony/symfony/blob/master/src/Symfony/Component/HttpFoundation/Response.php#L391
     public function emit(ResponseInterface $response): void
     {
-        //TODO : créer deux méthodes privées "sendHeaders" et "sendContent" comme dans symfony ? Cela merpettrait de regrouper la vérification du isResponseEmpty+ la ligne de code emitBody dans une sous fonction emitContent() par exemple !!!
+        // Ensure the content was not already been manualy sent.
+        $this->assertNoPreviousOutput();
+        // Emit the response : headers + status + body.
+        $this->emitHeaders($response);
+        $this->emitStatusLine($response);
+        $this->emitContent($response);
+    }
 
-        $isEmpty = $this->isResponseEmpty($response);
-
-        // TODO : lever une exception si les headers sont déjà envoyés !!!!
-        // headers have already been sent by the developer ?
-        if (headers_sent() === false) {
-            $this->emitHeaders($response);
-            // It is important to mention that this method should be called after the headers are sent, in order to prevent PHP from changing the status code of the emitted response.
-            $this->emitStatusLine($response);
+    /**
+     * Checks to see if content has previously been sent.
+     *
+     * If either headers have been sent or the output buffer contains content,
+     * raises an exception.
+     *
+     * @throws EmitterException if headers have already been sent.
+     * @throws EmitterException if output is present in the output buffer.
+     */
+    //https://github.com/narrowspark/http-emitter/blob/4f9c37ef20c8506117e1c18600fe183be37e309b/src/AbstractSapiEmitter.php#L47
+    //https://github.com/narrowspark/http-emitter/blob/4f9c37ef20c8506117e1c18600fe183be37e309b/tests/AbstractEmitterTest.php#L38
+    private function assertNoPreviousOutput(): void
+    {
+        if (headers_sent()) {
+            throw EmitterException::forHeadersSent();
         }
 
-        // TODO : il devrait pas il y avoir un test sur la méthode request === CONNECT car je pense qu'il n'y a pas non plus de body dans ce cas là !!!!
-        // TODO : je me demande aussi si ce n'est pas le cas pour les request de type HEAD/TRACE/OPTIONS => https://github.com/amphp/aerys/blob/b47982604a64d8d49f7fc66cdbaf6940d97f3300/lib/Http1Driver.php#L298
-        if (! $isEmpty) {
-            $this->emitBody($response);
+        if (ob_get_level() > 0 && ob_get_length() > 0) {
+            throw EmitterException::forOutputSent();
         }
     }
 
@@ -143,12 +158,17 @@ final class SapiEmitter
     }
 
     /**
-     * Emit the message body.
+     * Emit the body content.
      *
      * @param \Psr\Http\Message\ResponseInterface $response The response to emit
      */
-    private function emitBody(ResponseInterface $response): void
+    private function emitContent(ResponseInterface $response): void
     {
+        // Early exit if there is no body content to emit !
+        if ($this->isResponseEmpty($response)){
+            return;
+        }
+
         $stream = $response->getBody();
 
         if ($stream->isSeekable()) {
@@ -168,6 +188,8 @@ final class SapiEmitter
      *
      * @return bool
      */
+    // TODO : il devrait pas il y avoir un test sur la méthode request === CONNECT car je pense qu'il n'y a pas non plus de body dans ce cas là !!!!
+    // TODO : je me demande aussi si ce n'est pas le cas pour les request de type HEAD/TRACE/OPTIONS => https://github.com/amphp/aerys/blob/b47982604a64d8d49f7fc66cdbaf6940d97f3300/lib/Http1Driver.php#L298
     // TODO : utiliser ce bout de code pour vérifier si la réponse est vide :
     // https://github.com/guzzle/psr7/blob/be3bd52821cf797bbcfe34874bdd6eb5832f7af8/src/functions.php#L823
     // https://github.com/yiisoft/yii-web/blob/master/src/SapiEmitter.php#L102

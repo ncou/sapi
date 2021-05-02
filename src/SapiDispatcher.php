@@ -30,7 +30,7 @@ final class SapiDispatcher extends AbstractDispatcher
     protected function perform(SapiListener $sapi, Http $http, HttpErrorHandler $errorHandler): void
     {
         $sapi->onMessage = function (ServerRequestInterface $request) use ($http, $errorHandler) {
-           // TODO : code à améliorer pour savoir si on est en debug ou non et donc si les exceptions doivent afficher le détail (stacktrace notamment) !!!!
+            // TODO : code à améliorer pour savoir si on est en debug ou non et donc si les exceptions doivent afficher le détail (stacktrace notamment) !!!!
             // https://github.com/yiisoft/yii-web/blob/ae3d1986fefd41e1f86f345b4ea57ca33326d4f2/src/ErrorHandler/ErrorCatcher.php#L132
             // https://github.com/yiisoft/yii-web/blob/54000c5e34d834efe61dce3ecd6ede36b86c31bd/src/ErrorHandler/ThrowableRendererInterface.php#L28
             $verbose = true;

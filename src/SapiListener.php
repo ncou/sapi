@@ -8,6 +8,7 @@ use Chiron\Http\ErrorHandler\HttpErrorHandler;
 use Chiron\Core\Dispatcher\AbstractDispatcher;
 use Nyholm\Psr7Server\ServerRequestCreator;
 use Chiron\Http\Http;
+use Chiron\Sapi\Exception\HeadersAlreadySentException;
 use Throwable;
 
 final class SapiListener
@@ -30,6 +31,7 @@ final class SapiListener
         $request = $this->requestCreator->fromGlobals();
         $response = call_user_func($this->onMessage, $request);
 
-        $this->emitter->emit($response); // TODO : indiquer dans la phpdoc qu'il peut il y avoir une exception lorsque le emitter a déjà envoyé les headers ????
+        // Emit the response body and HTTP headers.
+        $this->emitter->emit($response);
     }
 }
