@@ -46,7 +46,7 @@ final class SapiDispatcher extends AbstractDispatcher
             return $response;
         };
 
-        // Emit the response.
+        // Listen the request message to emit the response.
         $sapi->listen();
     }
 }

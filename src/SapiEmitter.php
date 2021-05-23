@@ -69,7 +69,7 @@ final class SapiEmitter
     public function __construct(int $bufferSize = self::DEFAULT_BUFFER_SIZE)
     {
         if ($bufferSize <= 0) {
-            throw new EmitterException('Buffer size must be greater than zero'); // TODO : crer une méthode statique dans la classe EmitterException pour créer l'enception avec le message comme c'est fait avec EmitterException::forHeadersSent ????
+            throw new EmitterException('Buffer size must be greater than zero');
         }
 
         $this->bufferSize = $bufferSize; // TODO : créer une méthode setBufferSize()
@@ -107,11 +107,11 @@ final class SapiEmitter
     private function assertNoPreviousOutput(): void
     {
         if (headers_sent()) {
-            throw EmitterException::forHeadersSent();
+            throw new EmitterException('Unable to emit response; headers already sent');
         }
 
         if (ob_get_level() > 0 && ob_get_length() > 0) {
-            throw EmitterException::forOutputSent();
+            throw new EmitterException('Output has been emitted previously; cannot emit response');
         }
     }
 
