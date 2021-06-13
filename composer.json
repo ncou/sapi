@@ -39,7 +39,7 @@
     "extra": {
         "chiron": {
             "bootloaders": [
-                "Chiron\\Sapi\\Bootloader\\SapiDispatcherBootloader"
+                "Chiron\\Sapi\\Bootloader\\SapiEngineBootloader"
             ]
         }
     }

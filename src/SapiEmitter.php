@@ -90,7 +90,7 @@ final class SapiEmitter
         // Emit the response : headers + status + body.
         $this->emitHeaders($response);
         $this->emitStatusLine($response);
-        $this->emitContent($response);
+        $this->emitBody($response);
     }
 
     /**
@@ -107,11 +107,11 @@ final class SapiEmitter
     private function assertNoPreviousOutput(): void
     {
         if (headers_sent()) {
-            throw new EmitterException('Unable to emit response; headers already sent');
+            throw new EmitterException('Unable to emit response, headers already send.');
         }
 
         if (ob_get_level() > 0 && ob_get_length() > 0) {
-            throw new EmitterException('Output has been emitted previously; cannot emit response');
+            throw new EmitterException('Unable to emit response, found non closed buffered output.');
         }
     }
 
@@ -162,7 +162,7 @@ final class SapiEmitter
      *
      * @param \Psr\Http\Message\ResponseInterface $response The response to emit
      */
-    private function emitContent(ResponseInterface $response): void
+    private function emitBody(ResponseInterface $response): void
     {
         // Early exit if there is no body content to emit !
         if ($this->isResponseEmpty($response)){

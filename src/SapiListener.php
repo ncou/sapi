@@ -11,6 +11,7 @@ use Chiron\Http\Http;
 use Chiron\Sapi\Exception\HeadersAlreadySentException;
 use Throwable;
 
+// TODO : renommer la classe en SapiResponder ? car ce n'est pas vraiment un listener !!!!
 final class SapiListener
 {
     /** @var callable */
