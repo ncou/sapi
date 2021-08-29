@@ -6,7 +6,7 @@ namespace Chiron\Sapi\Bootloader;
 
 use Chiron\Application;
 use Chiron\Core\Container\Bootloader\AbstractBootloader;
-use Chiron\Container\FactoryInterface;
+use Chiron\Injector\FactoryInterface;
 use Chiron\Sapi\SapiEngine;
 
 final class SapiEngineBootloader extends AbstractBootloader

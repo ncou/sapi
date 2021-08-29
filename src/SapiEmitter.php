@@ -11,6 +11,7 @@ use Chiron\Sapi\Exception\EmitterException;
 //https://github.com/narrowspark/http-emitter/blob/9e61a16408c81e656050c0dfde641f641527a29c/src/SapiEmitter.php
 
 //https://github.com/ventoviro/windwalker-framework/blob/8b1aba30967dd0e6c4374aec0085783c3d0f88b4/src/Http/Output/Output.php
+//https://github.com/windwalker-io/framework/blob/master/packages/http/src/Output/StreamOutput.php
 
 //https://github.com/spiral/http/blob/master/src/Emitter/SapiEmitter.php
 
