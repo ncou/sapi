@@ -18,15 +18,15 @@
         ]
     },
     "require": {
-        "php": "^7.2",
+        "php": "^8.0|^8.1",
         "nyholm/psr7-server": "^0.3"
     },
     "require-dev": {
-        "phpunit/phpunit": "^8.0",
+        "phpunit/phpunit": "^9.5",
         "phpstan/phpstan": "^0.12",
         "phpstan/phpstan-phpunit": "^0.12",
         "chiron/coding-standard": "^3.0",
-        "nyholm/psr7": "^1.3"
+        "nyholm/psr7": "^1.4"
     },
     "scripts": {
         "phpunit": "phpunit --colors=always",
