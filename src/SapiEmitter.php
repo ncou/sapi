@@ -8,6 +8,11 @@ use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 use Chiron\Sapi\Exception\EmitterException;
 
+//https://github.com/cakephp/http/blob/5.x/ResponseEmitter.php
+//https://github.com/laminas/laminas-httphandlerrunner/blob/2.2.x/src/Emitter/SapiStreamEmitter.php#L80
+
+// TODO : il faut aussi enlever le header Content-Type si la réponse à un code 304 ou 204 !!!! https://github.com/cakephp/cakephp/blob/dd9d8d563cb934daf0d564acf25f1b5308fae65a/src/Http/Response.php#L496
+
 //https://github.com/narrowspark/http-emitter/blob/9e61a16408c81e656050c0dfde641f641527a29c/src/SapiEmitter.php
 
 //https://github.com/ventoviro/windwalker-framework/blob/8b1aba30967dd0e6c4374aec0085783c3d0f88b4/src/Http/Output/Output.php
@@ -55,10 +60,10 @@ final class SapiEmitter
 
     /** @var int default buffer size (8Mb) */
     // TODO : cette valeur est paramétrée dans le fichier http.php.dist et dans la classe HttpConfig il faudrait virer ces infos de ces 2 fichiers car c'est propre au sapi et pas à la configuration générale du module http !!!!
-    private const DEFAULT_BUFFER_SIZE = 8 * 1024 * 1024;
+    private const DEFAULT_BUFFER_SIZE = 8 * 1024 * 1024; // TODO : utiliser directement un chiffre : 8_388_608
 
     /** @var int */
-    private $bufferSize;
+    private int $bufferSize;
 
     /**
      * Construct the Emitter, and define the chunk size used to emit the body.
@@ -73,7 +78,7 @@ final class SapiEmitter
             throw new EmitterException('Buffer size must be greater than zero');
         }
 
-        $this->bufferSize = $bufferSize; // TODO : créer une méthode setBufferSize()
+        $this->bufferSize = $bufferSize; // TODO : créer une méthode setBufferSize() ou withBufferSize qui clone la classe et modifie le bufferSize
     }
 
     /**
@@ -88,7 +93,8 @@ final class SapiEmitter
     {
         // Ensure the content was not already been manualy sent.
         $this->assertNoPreviousOutput();
-        // Emit the response : headers + status + body.
+
+        // Emit the response
         $this->emitHeaders($response);
         $this->emitStatusLine($response);
         $this->emitBody($response);
@@ -107,8 +113,14 @@ final class SapiEmitter
     //https://github.com/narrowspark/http-emitter/blob/4f9c37ef20c8506117e1c18600fe183be37e309b/tests/AbstractEmitterTest.php#L38
     private function assertNoPreviousOutput(): void
     {
-        if (headers_sent()) {
-            throw new EmitterException('Unable to emit response, headers already send.');
+        $file = $line = null;
+
+        if (headers_sent($file, $line)) {
+            throw new EmitterException(
+                sprintf('Unable to emit response, headers already send in file=%s line=%s.',
+                    $file,
+                    $line)
+            );
         }
 
         if (ob_get_level() > 0 && ob_get_length() > 0) {
@@ -170,15 +182,19 @@ final class SapiEmitter
             return;
         }
 
+        // Clear the output buffers.
+        //$this->flushOutput();
+
         $stream = $response->getBody();
 
         if ($stream->isSeekable()) {
             $stream->rewind();
         }
 
+        // TODO : je pense qu'il faudrait vérifier si le body est isReadable() === true avant d'appeller la méthode read(), sinon on fait directement un "echo $stream"
+        //https://github.com/laminas/laminas-httphandlerrunner/blob/2.2.x/src/Emitter/SapiStreamEmitter.php#L65
         while (! $stream->eof()) {
             echo $stream->read($this->bufferSize);
-            //flush();
         }
     }
 
@@ -194,8 +210,10 @@ final class SapiEmitter
     // TODO : utiliser ce bout de code pour vérifier si la réponse est vide :
     // https://github.com/guzzle/psr7/blob/be3bd52821cf797bbcfe34874bdd6eb5832f7af8/src/functions.php#L823
     // https://github.com/yiisoft/yii-web/blob/master/src/SapiEmitter.php#L102
+    // TODO : il faut aussi enlever le header Content-Type si la réponse à un code 304 ou 204 !!!! https://github.com/cakephp/cakephp/blob/dd9d8d563cb934daf0d564acf25f1b5308fae65a/src/Http/Response.php#L496
     private function isResponseEmpty(ResponseInterface $response): bool
     {
+        // TODO : utiliser plutot la méthode StatusCode::isEmpty($response->getStatusCode())
         if (in_array($response->getStatusCode(), self::NO_BODY_RESPONSE_CODES)) {
             return true;
         }
@@ -209,4 +227,19 @@ final class SapiEmitter
 
         return $seekable ? $stream->read(1) === '' : $stream->eof();
     }
+
+    /**
+     * Loops through the output buffer, flushing each, before emitting the response.
+     *
+     * @return void
+     */
+    // https://github.com/cakephp/http/blob/f6a451876343b3d673a5f0083ebd88c3117885f2/ResponseEmitter.php#L238
+    //https://github.com/symfony/symfony/blob/6.2/src/Symfony/Component/HttpFoundation/Response.php#L1257
+    /*
+    protected function flushOutput(): void
+    {
+        while (ob_get_level() > 0) {
+            ob_end_flush();
+        }
+    }*/
 }

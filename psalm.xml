@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<psalm xmlns="https://getpsalm.org/schema/config"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+       cacheDirectory="./.build/cache/psalm"
+       errorBaseline="./psalm-baseline.xml">
+
+    <projectFiles>
+        <directory name="./src"/>
+        <ignoreFiles>
+            <directory name="./tests"/>
+            <directory name="./vendor"/>
+        </ignoreFiles>
+    </projectFiles>
+
+    <issueHandlers>
+        <InvalidThrow>
+            <errorLevel type="suppress">
+                <referencedClass name="Psr\Container\ContainerExceptionInterface" />
+                <referencedClass name="Psr\Container\NotFoundExceptionInterface" />
+            </errorLevel>
+        </InvalidThrow>
+        <InvalidCatch>
+            <errorLevel type="suppress">
+                <referencedClass name="Psr\Container\ContainerExceptionInterface" />
+                <referencedClass name="Psr\Container\NotFoundExceptionInterface" />
+            </errorLevel>
+        </InvalidCatch>
+    </issueHandlers>
+
+</psalm>

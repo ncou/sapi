@@ -1,6 +1,6 @@
+/captainhook.config.json
+/composer.lock
+/phpcs.xml
+/phpunit.xml
 /vendor/
-composer.lock
-.phplint-cache
-.phpcs-cache
-.phpunit.result.cache
-.idea/
+/.build/
