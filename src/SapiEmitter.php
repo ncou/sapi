@@ -7,6 +7,7 @@ namespace Chiron\Sapi;
 use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 use Chiron\Sapi\Exception\EmitterException;
+use Chiron\Http\Message\StatusCode;
 
 //https://github.com/cakephp/http/blob/5.x/ResponseEmitter.php
 //https://github.com/laminas/laminas-httphandlerrunner/blob/2.2.x/src/Emitter/SapiStreamEmitter.php#L80
@@ -52,6 +53,10 @@ use Chiron\Sapi\Exception\EmitterException;
 // TODO : créer un répertoire "Emitter" dans le package chiron/http et déplacer cette classe dans ce répertoire "Emitter" ????
 
 // TODO : externaliser la méthode pour définir la tailler du buffer, elle pourra être appellée dans un bootloader pour modifier cette valeur.
+
+/**
+ * @psalm-type ParsedRangeType = array{0:string,1:int,2:int,3:'*'|int}
+ */
 final class SapiEmitter
 {
     // TODO : créer une méthode statique dans la classe StatusCode::isEmpty($code) pour avec ce tableau là ? idem en créant une méthode isInformational($code) et isCacheable()...etc, en se basant sur les méthodes de symfony : https://github.com/symfony/symfony/blob/master/src/Symfony/Component/HttpFoundation/Response.php#L1217
@@ -60,29 +65,28 @@ final class SapiEmitter
 
     /** @var int default buffer size (8Mb) */
     // TODO : cette valeur est paramétrée dans le fichier http.php.dist et dans la classe HttpConfig il faudrait virer ces infos de ces 2 fichiers car c'est propre au sapi et pas à la configuration générale du module http !!!!
-    private const DEFAULT_BUFFER_SIZE = 8 * 1024 * 1024; // TODO : utiliser directement un chiffre : 8_388_608
+    //private const DEFAULT_BUFFER_SIZE = 8 * 1024 * 1024; // TODO : utiliser directement un chiffre : 8_388_608
 
-    /** @var int */
-    private int $bufferSize;
+    private int $maxBufferLength;
 
     /**
      * Construct the Emitter, and define the chunk size used to emit the body.
      *
-     * @param int $bufferSize Should be greater than zero.
+     * @param int $maxBufferLength Should be greater than zero.
      *
      * @throws EmitterException if the buffer size is invalid.
      */
-    public function __construct(int $bufferSize = self::DEFAULT_BUFFER_SIZE)
+    public function __construct(int $maxBufferLength = 8192)
     {
-        if ($bufferSize <= 0) {
-            throw new EmitterException('Buffer size must be greater than zero');
+        if ($maxBufferLength <= 0) {
+            throw new EmitterException('Buffer length must be greater than zero.');
         }
 
-        $this->bufferSize = $bufferSize; // TODO : créer une méthode setBufferSize() ou withBufferSize qui clone la classe et modifie le bufferSize
+        $this->maxBufferLength = $maxBufferLength; // TODO : créer une méthode setBufferSize() ou withBufferSize qui clone la classe et modifie le bufferSize
     }
 
     /**
-     * Emit the http response to the client.
+     * Emits a response for a PHP SAPI environment.
      *
      * @param ResponseInterface $response
      *
@@ -91,13 +95,16 @@ final class SapiEmitter
      */
     public function emit(ResponseInterface $response): void
     {
-        // Ensure the content was not already been manualy sent.
         $this->assertNoPreviousOutput();
-
-        // Emit the response
         $this->emitHeaders($response);
         $this->emitStatusLine($response);
-        $this->emitBody($response);
+
+        $range = $this->parseContentRange($response->getHeaderLine('Content-Range'));
+        if (is_array($range)) {
+            $this->emitBodyRange($range, $response);
+        } else {
+            $this->emitBody($response);
+        }
     }
 
     /**
@@ -178,23 +185,74 @@ final class SapiEmitter
     private function emitBody(ResponseInterface $response): void
     {
         // Early exit if there is no body content to emit !
-        if ($this->isResponseEmpty($response)){
+        //if ($this->isResponseEmpty($response)){
+        if (StatusCode::isEmpty($response->getStatusCode())) {
             return;
         }
 
         // Clear the output buffers.
         //$this->flushOutput();
 
-        $stream = $response->getBody();
+        $body = $response->getBody();
 
-        if ($stream->isSeekable()) {
-            $stream->rewind();
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+
+        if (! $body->isReadable()) {
+            echo $body;
+
+            return;
         }
 
         // TODO : je pense qu'il faudrait vérifier si le body est isReadable() === true avant d'appeller la méthode read(), sinon on fait directement un "echo $stream"
         //https://github.com/laminas/laminas-httphandlerrunner/blob/2.2.x/src/Emitter/SapiStreamEmitter.php#L65
-        while (! $stream->eof()) {
-            echo $stream->read($this->bufferSize);
+        while (! $body->eof()) {
+            echo $body->read($this->maxBufferLength);
+        }
+    }
+
+    /**
+     * Emit a range of the message body.
+     *
+     * @param array $range The range data to emit
+     * @psalm-param ParsedRangeType $range
+     *
+     * @param \Psr\Http\Message\ResponseInterface $response The response to emit
+     *
+     * @return void
+     */
+    private function emitBodyRange(array $range, ResponseInterface $response): void
+    {
+        [, $first, $last] = $range;
+
+        $body = $response->getBody();
+
+        $length = $last - $first + 1;
+
+        if ($body->isSeekable()) {
+            $body->seek($first);
+
+            $first = 0;
+        }
+
+        if (! $body->isReadable()) {
+            echo substr($body->getContents(), $first, $length);
+
+            return;
+        }
+
+        $remaining = $length;
+
+        while ($remaining >= $this->maxBufferLength && ! $body->eof()) {
+            $contents   = $body->read($this->maxBufferLength);
+            $remaining -= strlen($contents);
+
+            echo $contents;
+        }
+
+        if ($remaining > 0 && ! $body->eof()) {
+            echo $body->read($remaining);
         }
     }
 
@@ -211,6 +269,7 @@ final class SapiEmitter
     // https://github.com/guzzle/psr7/blob/be3bd52821cf797bbcfe34874bdd6eb5832f7af8/src/functions.php#L823
     // https://github.com/yiisoft/yii-web/blob/master/src/SapiEmitter.php#L102
     // TODO : il faut aussi enlever le header Content-Type si la réponse à un code 304 ou 204 !!!! https://github.com/cakephp/cakephp/blob/dd9d8d563cb934daf0d564acf25f1b5308fae65a/src/Http/Response.php#L496
+    /*
     private function isResponseEmpty(ResponseInterface $response): bool
     {
         // TODO : utiliser plutot la méthode StatusCode::isEmpty($response->getStatusCode())
@@ -226,6 +285,31 @@ final class SapiEmitter
         }
 
         return $seekable ? $stream->read(1) === '' : $stream->eof();
+    }*/
+
+    /**
+     * Parse content-range header
+     *
+     * @see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.16
+     *
+     * @param string $header The Content-Range header to parse.
+     * @return null|array [unit, first, last, length]; returns null if no
+     *     content range or an invalid content range is provided
+     *
+     * @psalm-return null|ParsedRangeType
+     */
+    private function parseContentRange(string $header): ?array
+    {
+        if (! preg_match('/(?P<unit>[\w]+)\s+(?P<first>\d+)-(?P<last>\d+)\/(?P<length>\d+|\*)/', $header, $matches)) {
+            return null;
+        }
+
+        return [
+            $matches['unit'],
+            (int) $matches['first'],
+            (int) $matches['last'],
+            $matches['length'] === '*' ? '*' : (int) $matches['length'],
+        ];
     }
 
     /**
@@ -242,4 +326,6 @@ final class SapiEmitter
             ob_end_flush();
         }
     }*/
+
+
 }

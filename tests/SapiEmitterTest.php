@@ -162,4 +162,79 @@ class SapiEmitterTest extends TestCase
         ];
         self::assertSame($expectedStack, HeaderStack::stack());
     }
+
+    /**
+     * Test valid body ranges.
+     */
+    public function testEmitResponseBodyRange(): void
+    {
+        $response = (new Response())
+            ->withHeader('Content-Type', 'text/plain')
+            ->withHeader('Content-Range', 'bytes 1-4/9');
+        $response->getBody()->write('It worked');
+
+        ob_start();
+        $this->emitter->emit($response);
+        $out = ob_get_clean();
+
+        $this->assertSame('t wo', $out);
+
+        $expectedStack = [
+            ['header' => 'Content-Type: text/plain', 'replace' => true, 'status_code' => 200],
+            ['header' => 'Content-Range: bytes 1-4/9', 'replace' => true, 'status_code' => 200],
+            ['header' => 'HTTP/1.1 200 OK', 'replace' => true, 'status_code' => 200],
+        ];
+        $this->assertEquals($expectedStack, HeaderStack::stack());
+    }
+
+    /**
+     * Test valid body ranges.
+     */
+    public function testEmitResponseBodyRangeComplete(): void
+    {
+        $response = (new Response())
+            ->withHeader('Content-Type', 'text/plain')
+            ->withHeader('Content-Range', 'bytes 0-20/9');
+        $response->getBody()->write('It worked');
+
+        ob_start();
+        $this->emitter->emit($response);
+        $out = ob_get_clean();
+
+        $this->assertSame('It worked', $out);
+    }
+
+    /**
+     * Test out of bounds body ranges.
+     */
+    public function testEmitResponseBodyRangeOverflow(): void
+    {
+        $response = (new Response())
+            ->withHeader('Content-Type', 'text/plain')
+            ->withHeader('Content-Range', 'bytes 5-20/9');
+        $response->getBody()->write('It worked');
+
+        ob_start();
+        $this->emitter->emit($response);
+        $out = ob_get_clean();
+
+        $this->assertSame('rked', $out);
+    }
+
+    /**
+     * Test malformed content-range header
+     */
+    public function testEmitResponseBodyRangeMalformed(): void
+    {
+        $response = (new Response())
+            ->withHeader('Content-Type', 'text/plain')
+            ->withHeader('Content-Range', 'bytes 9-ba/a');
+        $response->getBody()->write('It worked');
+
+        ob_start();
+        $this->emitter->emit($response);
+        $out = ob_get_clean();
+
+        $this->assertSame('It worked', $out);
+    }
 }
