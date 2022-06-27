@@ -6,6 +6,7 @@
     "keywords": [],
     "require": {
         "php": "^8.0 || ^8.1",
+        "chiron/core": "^1.0",
         "nyholm/psr7-server": "^1.0"
     },
     "require-dev": {
