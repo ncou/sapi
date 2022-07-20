@@ -7,7 +7,10 @@ namespace Chiron\Sapi;
 use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 use Chiron\Sapi\Exception\EmitterException;
-use Chiron\Http\Message\StatusCode;
+
+// TODO : pour les tests avec un body noSeekabke ou noReadable il faut utiliser la classe :
+//https://github.com/cakephp/cakephp/blob/32e3c532fea8abe2db8b697f07dfddf4dfc134ca/src/Http/CallbackStream.php
+//https://github.com/laminas/laminas-diactoros/blob/2.12.x/src/CallbackStream.php
 
 //https://github.com/cakephp/http/blob/5.x/ResponseEmitter.php
 //https://github.com/laminas/laminas-httphandlerrunner/blob/2.2.x/src/Emitter/SapiStreamEmitter.php#L80
@@ -49,11 +52,6 @@ use Chiron\Http\Message\StatusCode;
 // TODO : il devrait pas il y avoir un test sur la méthode request === CONNECT car je pense qu'il n'y a pas non plus de body dans ce cas là !!!!
 // TODO : je me demande aussi si ce n'est pas le cas pour les request de type HEAD/TRACE/OPTIONS => https://github.com/amphp/aerys/blob/b47982604a64d8d49f7fc66cdbaf6940d97f3300/lib/Http1Driver.php#L298
 
-
-// TODO : créer un répertoire "Emitter" dans le package chiron/http et déplacer cette classe dans ce répertoire "Emitter" ????
-
-// TODO : externaliser la méthode pour définir la tailler du buffer, elle pourra être appellée dans un bootloader pour modifier cette valeur.
-
 /**
  * @psalm-type ParsedRangeType = array{0:string,1:int,2:int,3:'*'|int}
  */
@@ -61,29 +59,11 @@ final class SapiEmitter
 {
     // TODO : créer une méthode statique dans la classe StatusCode::isEmpty($code) pour avec ce tableau là ? idem en créant une méthode isInformational($code) et isCacheable()...etc, en se basant sur les méthodes de symfony : https://github.com/symfony/symfony/blob/master/src/Symfony/Component/HttpFoundation/Response.php#L1217
     /** @var array list of http code who MUST not have a body */
-    private const NO_BODY_RESPONSE_CODES = [204, 304];
+    //private const NO_BODY_RESPONSE_CODES = [204, 304];
 
-    /** @var int default buffer size (8Mb) */
+    /** @var int default buffer size (8kb) */
     // TODO : cette valeur est paramétrée dans le fichier http.php.dist et dans la classe HttpConfig il faudrait virer ces infos de ces 2 fichiers car c'est propre au sapi et pas à la configuration générale du module http !!!!
-    //private const DEFAULT_BUFFER_SIZE = 8 * 1024 * 1024; // TODO : utiliser directement un chiffre : 8_388_608
-
-    private int $maxBufferLength;
-
-    /**
-     * Construct the Emitter, and define the chunk size used to emit the body.
-     *
-     * @param int $maxBufferLength Should be greater than zero.
-     *
-     * @throws EmitterException if the buffer size is invalid.
-     */
-    public function __construct(int $maxBufferLength = 8192)
-    {
-        if ($maxBufferLength <= 0) {
-            throw new EmitterException('Buffer length must be greater than zero.');
-        }
-
-        $this->maxBufferLength = $maxBufferLength; // TODO : créer une méthode setBufferSize() ou withBufferSize qui clone la classe et modifie le bufferSize
-    }
+    private const BUFFER_SIZE = 8 * 1024;
 
     /**
      * Emits a response for a PHP SAPI environment.
@@ -93,17 +73,19 @@ final class SapiEmitter
      * @throws EmitterException if headers have already been sent.
      * @throws EmitterException if output is present in the output buffer.
      */
-    public function emit(ResponseInterface $response): void
+    public function emit(ResponseInterface $response, bool $withBody): void
     {
         $this->assertNoPreviousOutput();
         $this->emitHeaders($response);
         $this->emitStatusLine($response);
 
-        $range = $this->parseContentRange($response->getHeaderLine('Content-Range'));
-        if (is_array($range)) {
-            $this->emitBodyRange($range, $response);
-        } else {
-            $this->emitBody($response);
+        if ($withBody) {
+            $range = $this->parseContentRange($response->getHeaderLine('Content-Range'));
+            if (is_array($range)) {
+                $this->emitBodyRange($range, $response);
+            } else {
+                $this->emitBody($response);
+            }
         }
     }
 
@@ -184,12 +166,6 @@ final class SapiEmitter
      */
     private function emitBody(ResponseInterface $response): void
     {
-        // Early exit if there is no body content to emit !
-        //if ($this->isResponseEmpty($response)){
-        if (StatusCode::isEmpty($response->getStatusCode())) {
-            return;
-        }
-
         // Clear the output buffers.
         //$this->flushOutput();
 
@@ -205,10 +181,8 @@ final class SapiEmitter
             return;
         }
 
-        // TODO : je pense qu'il faudrait vérifier si le body est isReadable() === true avant d'appeller la méthode read(), sinon on fait directement un "echo $stream"
-        //https://github.com/laminas/laminas-httphandlerrunner/blob/2.2.x/src/Emitter/SapiStreamEmitter.php#L65
         while (! $body->eof()) {
-            echo $body->read($this->maxBufferLength);
+            echo $body->read(self::BUFFER_SIZE);
         }
     }
 
@@ -224,7 +198,7 @@ final class SapiEmitter
      */
     private function emitBodyRange(array $range, ResponseInterface $response): void
     {
-        [, $first, $last] = $range;
+        [/* $unit */, $first, $last, /* $length */] = $range;
 
         $body = $response->getBody();
 
@@ -244,8 +218,8 @@ final class SapiEmitter
 
         $remaining = $length;
 
-        while ($remaining >= $this->maxBufferLength && ! $body->eof()) {
-            $contents   = $body->read($this->maxBufferLength);
+        while ($remaining >= self::BUFFER_SIZE && ! $body->eof()) {
+            $contents   = $body->read(self::BUFFER_SIZE);
             $remaining -= strlen($contents);
 
             echo $contents;
@@ -255,37 +229,6 @@ final class SapiEmitter
             echo $body->read($remaining);
         }
     }
-
-    /**
-     * Asserts response body data is empty or http status code doesn't require a body.
-     *
-     * @param ResponseInterface $response
-     *
-     * @return bool
-     */
-    // TODO : il devrait pas il y avoir un test sur la méthode request === CONNECT car je pense qu'il n'y a pas non plus de body dans ce cas là !!!!
-    // TODO : je me demande aussi si ce n'est pas le cas pour les request de type HEAD/TRACE/OPTIONS => https://github.com/amphp/aerys/blob/b47982604a64d8d49f7fc66cdbaf6940d97f3300/lib/Http1Driver.php#L298
-    // TODO : utiliser ce bout de code pour vérifier si la réponse est vide :
-    // https://github.com/guzzle/psr7/blob/be3bd52821cf797bbcfe34874bdd6eb5832f7af8/src/functions.php#L823
-    // https://github.com/yiisoft/yii-web/blob/master/src/SapiEmitter.php#L102
-    // TODO : il faut aussi enlever le header Content-Type si la réponse à un code 304 ou 204 !!!! https://github.com/cakephp/cakephp/blob/dd9d8d563cb934daf0d564acf25f1b5308fae65a/src/Http/Response.php#L496
-    /*
-    private function isResponseEmpty(ResponseInterface $response): bool
-    {
-        // TODO : utiliser plutot la méthode StatusCode::isEmpty($response->getStatusCode())
-        if (in_array($response->getStatusCode(), self::NO_BODY_RESPONSE_CODES)) {
-            return true;
-        }
-
-        // TODO : je pense qu'on simple $stream->getSize() si différent de null et supérieur à 0 ca devrait suffire comme test !!!!
-        $stream = $response->getBody();
-        $seekable = $stream->isSeekable();
-        if ($seekable) {
-            $stream->rewind();
-        }
-
-        return $seekable ? $stream->read(1) === '' : $stream->eof();
-    }*/
 
     /**
      * Parse content-range header

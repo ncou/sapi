@@ -10,6 +10,8 @@ use Nyholm\Psr7Server\ServerRequestCreator;
 use Chiron\Http\Http;
 use Chiron\Sapi\Exception\HeadersAlreadySentException;
 use Throwable;
+use Chiron\Http\Message\StatusCode;
+use Chiron\Http\Message\RequestMethod;
 
 // TODO : renommer la classe en SapiResponder ? car ce n'est pas vraiment un listener !!!! + renommer la méthode listen() en respond()
 final class SapiListener
@@ -32,7 +34,14 @@ final class SapiListener
         $request = $this->requestCreator->fromGlobals();
         $response = call_user_func($this->onMessage, $request); // TODO : si on utilise une closure dans ce cas utiliser le code suivant pour l'execution : ($this->onMessage)($request)
 
-        // Emit the response body and HTTP headers.
-        $this->emitter->emit($response);
+        // Response to HEAD and 1xx, 204 and 304 responses MUST NOT include a body.
+        $code = $response->getStatusCode();
+        $method = $request->getMethod();
+
+        if ($method === RequestMethod::HEAD || StatusCode::isInformational($code) || StatusCode::isEmpty($code)) {
+            $this->emitter->emit($response, withBody: false);
+        } else {
+            $this->emitter->emit($response, withBody: true);
+        }
     }
 }

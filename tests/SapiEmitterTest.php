@@ -5,6 +5,13 @@ declare(strict_types=1);
 // TODO : utiliser cette classe pour ajouter des tests : https://github.com/zendframework/zend-diactoros/blob/master/test/Response/SapiStreamEmitterTest.php
 // https://github.com/cakephp/cakephp/blob/master/tests/TestCase/Http/ResponseEmitterTest.php
 
+//https://github.com/laminas/laminas-httphandlerrunner/blob/2.2.x/test/Emitter/SapiStreamEmitterTest.php
+//https://github.com/cakephp/cakephp/blob/32e3c532fea8abe2db8b697f07dfddf4dfc134ca/tests/TestCase/Http/ResponseEmitterTest.php
+
+//https://github.com/laminas/laminas-diactoros/blob/2.12.x/src/CallbackStream.php
+//https://github.com/cakephp/http/blob/4.x/CallbackStream.php
+//https://github.com/phly/psr7examples/blob/master/src/CallbackStream.php
+
 namespace Chiron\Sapi\Test;
 
 use Chiron\Sapi\SapiEmitter;
